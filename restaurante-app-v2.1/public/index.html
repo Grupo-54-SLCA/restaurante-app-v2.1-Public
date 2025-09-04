@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurante Sabores</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div class="max-w-3xl mx-auto p-6">
+    <!-- Encabezado -->
+    <header class="bg-blue-600 text-white p-4 rounded-lg mb-6 text-center">
+      <h1 class="text-2xl font-bold">Restaurante Sabores</h1>
+      <p>Explora, pide y disfruta</p>
+    </header>
+
+    <!-- Paso 1: Selección de productos -->
+    <section id="paso1" class="step">
+      <h2 class="text-xl font-semibold mb-4">1. Selecciona tus productos</h2>
+      <div id="menu" class="grid md:grid-cols-2 gap-4 mb-6"></div>
+      <button id="btnContinuar1" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Continuar</button>
+    </section>
+
+    <!-- Paso 2: Datos del cliente -->
+    <section id="paso2" class="step hidden">
+      <h2 class="text-xl font-semibold mb-4">2. Ingresa tus datos</h2>
+      <form id="datos-form" class="space-y-4">
+        <div>
+          <label for="nombre" class="block text-gray-700">Tu nombre:</label>
+          <input type="text" id="nombre" required class="w-full border rounded-lg p-2">
+        </div>
+        <div>
+          <label for="comentarios" class="block text-gray-700">Comentarios:</label>
+          <textarea id="comentarios" rows="3" class="w-full border rounded-lg p-2"></textarea>
+        </div>
+        <div class="flex justify-between">
+          <button type="button" id="btnCancelar2" class="bg-red-500 text-white px-4 py-2 rounded-lg">Cancelar</button>
+          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Continuar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Paso 3: Confirmación del pedido -->
+    <section id="paso3" class="step hidden">
+      <h2 class="text-xl font-semibold mb-4">3. Confirmación de tu pedido</h2>
+      <div class="bg-white shadow rounded-lg p-6">
+        <p><strong>Cliente:</strong> <span id="conf-nombre"></span></p>
+        <p class="mt-2"><strong>Productos:</strong></p>
+        <ul id="conf-productos" class="list-disc pl-6 text-gray-700"></ul>
+        <p class="mt-2"><strong>Comentarios:</strong> <span id="conf-comentarios"></span></p>
+        <p class="mt-2 font-bold text-lg">Total: <span id="conf-total"></span></p>
+      </div>
+      <div class="flex justify-between mt-4">
+        <button id="btnCancelar3" class="bg-red-500 text-white px-4 py-2 rounded-lg">Cancelar</button>
+        <button id="btnConfirmarFinal" class="bg-green-600 text-white px-4 py-2 rounded-lg">Confirmar Pedido</button>
+      </div>
+      <p id="mensaje" class="text-green-600 mt-4 hidden">¡Pedido enviado!</p>
+    </section>
+
+    <!-- Acciones adicionales -->
+    <section class="mt-8 space-x-4">
+      <button id="btnHistorial" class="bg-gray-700 text-white px-4 py-2 rounded-lg">Ver Historial</button>
+      <button id="btnDownloadCSV" class="bg-yellow-500 text-white px-4 py-2 rounded-lg">Descargar CSV</button>
+      <button id="btnSyncDrive" class="bg-green-600 text-white px-4 py-2 rounded-lg">Sincronizar con Google Drive</button>
+      <p id="status-sync" class="mt-2 text-gray-600"></p>
+    </section>
+
+    <!-- Historial oculto -->
+    <section id="historial" class="hidden mt-8 bg-white p-4 rounded-lg shadow">
+      <h2 class="text-xl font-semibold mb-4">Historial de pedidos</h2>
+      <ul id="lista-pedidos" class="list-disc pl-6 text-gray-700"></ul>
+    </section>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const menus = [
+        { id: 1, nombre: "Pizza Margherita", precio: 10.99, descripcion: "Tomate, mozzarella y albahaca." },
+        { id: 2, nombre: "Hamburguesa Clásica", precio: 8.5, descripcion: "Carne, lechuga, tomate y salsa especial." },
+        { id: 3, nombre: "Ensalada César", precio: 6.75, descripcion: "Lechuga, crutones, pollo y aderezo César." },
+        { id: 4, nombre: "Pasta Carbonara", precio: 9.25, descripcion: "Espagueti con huevo, queso y panceta." },
+        { id: 5, nombre: "Tacos al Pastor", precio: 7.99, descripcion: "Cerdo, piña y cilantro." }
+      ];
+
+      const STORAGE_KEY = "historialPedidos";
+      let historial = [];
+      let carrito = [];
+      let datosCliente = {};
+
+      // Render menú
+      const menuContainer = document.getElementById("menu");
+      menus.forEach(menu => {
+        const card = document.createElement("div");
+        card.className = "bg-white p-4 rounded-lg shadow";
+        card.innerHTML = `
+          <h3 class="text-lg font-semibold">${menu.nombre}</h3>
+          <p class="text-gray-600">${menu.descripcion}</p>
+          <p class="text-blue-600 font-bold">$${menu.precio.toFixed(2)}</p>
+          <input type="number" id="cant-${menu.id}" min="0" value="0" class="border rounded p-1 w-20 mt-2">
+        `;
+        menuContainer.appendChild(card);
+      });
+
+      // Cargar historial
+      function loadHistorial() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        historial = saved ? JSON.parse(saved) : [];
+      }
+      loadHistorial();
+
+      // Guardar historial en JSON + CSV
+      function saveHistorial() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(historial));
+        const encabezados = ["ID", "Cliente", "Productos", "Total", "Comentarios", "Fecha"];
+        const filas = historial.map(p => [
+          p.id,
+          `"${p.nombre}"`,
+          `"${p.menu}"`,
+          p.total,
+          `"${p.comentarios || ""}"`,
+          p.fecha
+        ]);
+        const csvContenido = [encabezados, ...filas].map(f => f.join(",")).join("\n");
+        localStorage.setItem("historialPedidosCSV", csvContenido);
+      }
+
+      // Paso 1 → Continuar
+      document.getElementById("btnContinuar1").addEventListener("click", () => {
+        carrito = [];
+        menus.forEach(m => {
+          const cant = parseInt(document.getElementById(`cant-${m.id}`).value);
+          if (cant > 0) carrito.push({ ...m, cantidad: cant });
+        });
+        if (carrito.length === 0) return alert("Selecciona al menos un producto.");
+
+        document.getElementById("paso1").classList.add("hidden");
+        document.getElementById("paso2").classList.remove("hidden");
+      });
+
+      // Paso 2 → Continuar
+      document.getElementById("datos-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        datosCliente.nombre = document.getElementById("nombre").value;
+        datosCliente.comentarios = document.getElementById("comentarios").value;
+
+        // Llenar confirmación
+        document.getElementById("conf-nombre").textContent = datosCliente.nombre;
+        document.getElementById("conf-comentarios").textContent = datosCliente.comentarios || "Ninguno";
+        const lista = document.getElementById("conf-productos");
+        lista.innerHTML = "";
+        let total = 0;
+        carrito.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = `${item.cantidad} x ${item.nombre} - $${(item.precio * item.cantidad).toFixed(2)}`;
+          lista.appendChild(li);
+          total += item.precio * item.cantidad;
+        });
+        document.getElementById("conf-total").textContent = `$${total.toFixed(2)}`;
+
+        document.getElementById("paso2").classList.add("hidden");
+        document.getElementById("paso3").classList.remove("hidden");
+      });
+
+      // Paso 2 → Cancelar
+      document.getElementById("btnCancelar2").addEventListener("click", () => {
+        if (confirm("¿Seguro que deseas cancelar el pedido?")) {
+          carrito = [];
+          datosCliente = {};
+          document.getElementById("datos-form").reset();
+          document.getElementById("paso2").classList.add("hidden");
+          document.getElementById("paso1").classList.remove("hidden");
+        }
+      });
+
+      // Paso 3 → Cancelar
+      document.getElementById("btnCancelar3").addEventListener("click", () => {
+        if (confirm("¿Seguro que deseas cancelar el pedido?")) {
+          carrito = [];
+          datosCliente = {};
+          document.getElementById("datos-form").reset();
+          document.getElementById("paso3").classList.add("hidden");
+          document.getElementById("paso1").classList.remove("hidden");
+        }
+      });
+
+      // Paso 3 → Confirmar pedido final
+      document.getElementById("btnConfirmarFinal").addEventListener("click", () => {
+        const total = carrito.reduce((acc, p) => acc + p.precio * p.cantidad, 0);
+        const pedido = {
+          id: Date.now(),
+          nombre: datosCliente.nombre,
+          menu: carrito.map(p => `${p.cantidad}x ${p.nombre}`).join(", "),
+          total: total.toFixed(2),
+          comentarios: datosCliente.comentarios,
+          fecha: new Date().toLocaleString()
+        };
+
+        historial.push(pedido);
+        saveHistorial();
+        renderHistorial();
+
+        document.getElementById("mensaje").classList.remove("hidden");
+        setTimeout(() => document.getElementById("mensaje").classList.add("hidden"), 3000);
+
+        carrito = [];
+        datosCliente = {};
+        document.getElementById("datos-form").reset();
+        document.getElementById("paso3").classList.add("hidden");
+        document.getElementById("paso1").classList.remove("hidden");
+      });
+
+      // Render historial
+      function renderHistorial() {
+        const lista = document.getElementById("lista-pedidos");
+        lista.innerHTML = "";
+        historial.forEach(p => {
+          const li = document.createElement("li");
+          li.textContent = `${p.nombre} pidió (${p.menu}) - Total: $${p.total} - ${p.fecha}`;
+          lista.appendChild(li);
+        });
+      }
+      renderHistorial();
+
+      // Botón ver historial
+      document.getElementById("btnHistorial").addEventListener("click", () => {
+        document.getElementById("historial").classList.toggle("hidden");
+      });
+
+      // Descargar CSV
+      document.getElementById("btnDownloadCSV").addEventListener("click", () => {
+        const csv = localStorage.getItem("historialPedidosCSV");
+        if (!csv) return alert("No hay pedidos guardados.");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "historial_pedidos.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      // Sincronizar con Google Drive (JSON simulado)
+      document.getElementById("btnSyncDrive").addEventListener("click", async () => {
+        if (historial.length === 0) return alert("No hay pedidos para sincronizar.");
+        if (!navigator.onLine) return alert("Sin conexión a internet.");
+        const status = document.getElementById("status-sync");
+        status.textContent = "Sincronizando...";
+        try {
+          const fileData = new Blob([JSON.stringify(historial, null, 2)], { type: "application/json" });
+          console.log("Preparado para Google Drive:", fileData);
+          await new Promise(res => setTimeout(res, 1500)); // simulación
+          status.textContent = "¡Sincronizado con Google Drive!";
+          setTimeout(() => status.textContent = "", 3000);
+        } catch (err) {
+          status.textContent = "Error: " + err.message;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
